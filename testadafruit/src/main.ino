@@ -1,280 +1,213 @@
-Skip to content
-Why GitHub? 
-Business
-Explore 
-Marketplace
-Pricing 
+/*************************************************** 
+  This is an example sketch for our optical Fingerprint sensor
 
-Search
+  Designed specifically to work with the Adafruit BMP085 Breakout 
+  ----> http://www.adafruit.com/products/751
 
-Sign in
-Sign up
-21 143 34 JoaoLopesF/RemoteDebug
- Code  Issues 2  Pull requests 0  Projects 0  Insights
-Join GitHub today
-GitHub is home to over 28 million developers working together to host and review code, manage projects, and build software together.
+  These displays use TTL Serial to communicate, 2 pins are required to 
+  interface
+  Adafruit invests time and resources providing this open source code, 
+  please support Adafruit and open-source hardware by purchasing 
+  products from Adafruit!
 
-RemoteDebug/examples/RemoteDebug_Basic/RemoteDebug_Basic.ino
-7231c56  on 20 Oct
-@JoaoLopesF JoaoLopesF Version 1.5.6
-    
-Executable File  247 lines (169 sloc)  5.42 KB
-////////
-// Libraries Arduino
-//
-// Library: Remote debug - debug over telnet - for Esp8266 (NodeMCU) or ESP32
-// Author: Joao Lopes
-//
-// Attention: This library is only for help development. Please not use this in production
-//
-// First sample to show how to use it - basic one
-//
-// Example of use:
-//
-//        if (Debug.isActive(Debug.<level>)) { // <--- This is very important to reduce overheads and work of debug levels
-//            Debug.printf("bla bla bla: %d %s", number, str);
-//            Debug.println("bla bla bla");
-//        }
-//
-// Or short way (prefered if only one debug at time)
-//
-//		rdebugA("This is a any (always showed) - var %d\n", var);
-//
-//		rdebugV("This is a verbose - var %d\n", var);
-//		rdebugD("This is a debug - var %d\n", var);
-//		rdebugI("This is a information - var %d\n", var);
-//		rdebugW("This is a warning - var %d\n", var);
-//		rdebugE("This is a error - var %d\n", var);
-//
-//		rdebugV("This is println\n");
-//
-//		If you want a auto new line:
-//
-//		rdebugAln("This is a any (always showed) - var %d", var);
-//
-//		rdebugVln("This is a verbose - var %d", var);
-//		rdebugDln("This is a debug - var %d", var);
-//		rdebugIln("This is a information - var %d", var);
-//		rdebugWln("This is a warning - var %d", var);
-//		rdebugEln("This is a error - var %d", var);
-//
-//		rdebugVln("This is println");
-//
-//
-///////
+  Written by Limor Fried/Ladyada for Adafruit Industries.  
+  BSD license, all text above must be included in any redistribution
+ ****************************************************/
+#include <Arduino.h>
+#include <Adafruit_Fingerprint.h>
 
-// Libraries
+// On Leonardo/Micro or others with hardware serial, use those! #0 is green wire, #1 is white
+// uncomment this line:
+// #define mySerial Serial1
 
-#if defined (ESP8266)
+// For UNO and others without hardware serial, we must use software serial...
+// pin #2 is IN from sensor (GREEN wire)
+// pin #3 is OUT from arduino  (WHITE wire)
+// comment these two lines if using hardware serial
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(12, 14);
 
-#define USE_MDNS true // Use the MDNS ?
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
-// Includes do ESP8266
+uint8_t id;
 
-#include <ESP8266WiFi.h>
-
-#ifdef USE_MDNS
-#include <DNSServer.h>
-#include <ESP8266mDNS.h>
-#endif
-
-#elif defined(ESP32)
-
-//#define USE_MDNS true // Use the MDNS ? //TODO: not tested in Esp32 yet
-
-// Includes do ESP32
-
-#include <WiFi.h>
-
-#ifdef USE_MDNS
-#include "ESPmDNS.h"
-#endif
-
-#else
-
-#error The board must be ESP8266 or ESP32
-
-#endif // ESP
-
-// Remote debug over telnet - not recommended for production, only for development
-
-#include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
-
-RemoteDebug Debug;
-
-// SSID and password
-
-const char* ssid = "........";
-const char* password = "........";
-
-// Host mDNS
-
-#define HOST_NAME "remotedebug-sample"
-
-// Time
-
-uint32_t mLastTime = 0;
-uint32_t mTimeSeconds = 0;
-
-// Buildin Led ON ?
-
-boolean mLedON = false;
-
-////// Setup
-
-void setup() {
-
-    // Initialize the Serial (educattional use only, not need in production)
-
-    Serial.begin(115200);
-
-    // Buildin led off ESP8266
-
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, LOW);
-
-#ifdef ESP32
-    // ESP32 configuration // TODO: see if it is necessary
-  WiFi.enableSTA(true);
-  delay(1000);
-#endif
-
-  	// Debug
-
-    Serial.println("**** Setup: initializing ...");
-
-    // WiFi connection
-
-    WiFi.begin(ssid, password);
-    Serial.println("");
-
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    // Register host name in WiFi and mDNS
-
-    String hostNameWifi = HOST_NAME;
-    hostNameWifi.concat(".local");
-
-#ifdef ESP8266 // Only for it
-    WiFi.hostname(hostNameWifi);
-#endif
-
-#ifdef USE_MDNS  // Use the MDNS ?
-
-    if (MDNS.begin(HOST_NAME)) {
-        Serial.print("* MDNS responder started. Hostname -> ");
-        Serial.println(HOST_NAME);
-    }
-
-    MDNS.addService("telnet", "tcp", 23);
-
-#endif
-
-    // Initialize the telnet server of RemoteDebug
-
-    Debug.begin(HOST_NAME); // Initiaze the telnet server
-
-    Debug.setResetCmdEnabled(true); // Enable the reset command
-
-    //Debug.showTime(true); // To show time
-
-    // Debug.showProfiler(true); // To show profiler - time between messages of Debug
-                              // Good to "begin ...." and "end ...." messages
-
-    // This sample (serial -> educattional use only, not need in production)
-
-    Serial.println("* Arduino RemoteDebug Library");
-    Serial.println("*");
-    Serial.print("* WiFI connected. IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.println("*");
-    Serial.println("* Please use the telnet client (telnet for Mac/Unix or putty and others for Windows)");
-    Serial.println("*");
-    Serial.println("* This sample will send messages of debug in all levels.");
-    Serial.println("*");
-    Serial.println("* Please try change debug level in telnet, to see how it works");
-    Serial.println("*");
-
-}
-
-void loop()
+void setup()  
 {
-    // Each second
+  Serial.begin(9600);
+  while (!Serial);  // For Yun/Leo/Micro/Zero/...
+  delay(100);
+  Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
-    if ((millis() - mLastTime) >= 1000) {
-
-        // Time
-
-        mLastTime = millis();
-
-        mTimeSeconds++;
-
-        // Blink the led
-
-        mLedON = !mLedON;
-        digitalWrite(LED_BUILTIN, (mLedON)?LOW:HIGH);
-
-        // Debug the time (verbose level)
-
-        rdebugVln("* Time: %u seconds (VERBOSE)", mTimeSeconds);
-
-        if (mTimeSeconds % 5 == 0) { // Each 5 seconds
-
-            // Debug levels
-
-			rdebugVln("* This is a message of debug level VERBOSE");
-			rdebugDln("* This is a message of debug level DEBUG");
-			rdebugIln("* This is a message of debug level INFO");
-			rdebugWln("* This is a message of debug level WARNING");
-			rdebugEln("* This is a message of debug level ERROR");
-
-			// Call a function
-
-			foo();
-        }
-     }
-
-    // Remote debug over telnet
-
-    Debug.handle();
-
-    // Give a time for ESP8266
-
-    yield();
-
+  // set the data rate for the sensor serial port
+  finger.begin(57600);
+  
+  if (finger.verifyPassword()) {
+    Serial.println("Found fingerprint sensor!");
+  } else {
+    Serial.println("Did not find fingerprint sensor :(");
+    while (1) { delay(1); }
+  }
 }
 
-// Function example to show a new auto function name of rdebug* macros
-
-void foo() {
-
-  uint8_t var = 1;
-
-  rdebugVln("this is a debug - var %u", var);
-  rdebugVln("This is a println");
+uint8_t readnumber(void) {
+  uint8_t num = 0;
+  
+  while (num == 0) {
+    while (! Serial.available());
+    num = Serial.parseInt();
+  }
+  return num;
 }
 
-/////////// End
-© 2018 GitHub, Inc.
-Terms
-Privacy
-Security
-Status
-Help
-Contact GitHub
-Pricing
-API
-Training
-Blog
-About
-Press h to open a hovercard with more details.
+void loop()                     // run over and over again
+{
+  Serial.println("Ready to enroll a fingerprint!");
+  Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
+  id = readnumber();
+  if (id == 0) {// ID #0 not allowed, try again!
+     return;
+  }
+  Serial.print("Enrolling ID #");
+  Serial.println(id);
+  
+  while (!  getFingerprintEnroll() );
+}
+
+uint8_t getFingerprintEnroll() {
+
+  int p = -1;
+  Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
+  while (p != FINGERPRINT_OK) {
+    p = finger.getImage();
+    switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image taken");
+      break;
+    case FINGERPRINT_NOFINGER:
+      Serial.println(".");
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      Serial.println("Imaging error");
+      break;
+    default:
+      Serial.println("Unknown error");
+      break;
+    }
+  }
+
+  // OK success!
+
+  p = finger.image2Tz(1);
+  switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image converted");
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      Serial.println("Image too messy");
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    default:
+      Serial.println("Unknown error");
+      return p;
+  }
+  
+  Serial.println("Remove finger");
+  delay(2000);
+  p = 0;
+  while (p != FINGERPRINT_NOFINGER) {
+    p = finger.getImage();
+  }
+  Serial.print("ID "); Serial.println(id);
+  p = -1;
+  Serial.println("Place same finger again");
+  while (p != FINGERPRINT_OK) {
+    p = finger.getImage();
+    switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image taken");
+      break;
+    case FINGERPRINT_NOFINGER:
+      Serial.print(".");
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      Serial.println("Imaging error");
+      break;
+    default:
+      Serial.println("Unknown error");
+      break;
+    }
+  }
+
+  // OK success!
+
+  p = finger.image2Tz(2);
+  switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image converted");
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      Serial.println("Image too messy");
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    default:
+      Serial.println("Unknown error");
+      return p;
+  }
+  
+  // OK converted!
+  Serial.print("Creating model for #");  Serial.println(id);
+  
+  p = finger.createModel();
+  if (p == FINGERPRINT_OK) {
+    Serial.println("Prints matched!");
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error");
+    return p;
+  } else if (p == FINGERPRINT_ENROLLMISMATCH) {
+    Serial.println("Fingerprints did not match");
+    return p;
+  } else {
+    Serial.println("Unknown error");
+    return p;
+  }   
+  
+  Serial.print("ID "); Serial.println(id);
+  p = finger.storeModel(id);
+  if (p == FINGERPRINT_OK) {
+    Serial.println("Stored!");
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error");
+    return p;
+  } else if (p == FINGERPRINT_BADLOCATION) {
+    Serial.println("Could not store in that location");
+    return p;
+  } else if (p == FINGERPRINT_FLASHERR) {
+    Serial.println("Error writing to flash");
+    return p;
+  } else {
+    Serial.println("Unknown error");
+    return p;
+  }   
+}
